@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.DependencyInjectionTestExecutionListener;
 
 import java.math.BigDecimal;
 import java.util.concurrent.*;
@@ -24,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * scenario the user explicitly cared about.
  */
 @SpringBootTest
+@TestExecutionListeners(listeners = DependencyInjectionTestExecutionListener.class, inheritListeners = false)
 class IdempotencyConcurrencyTest {
 
     @Autowired private DemoService demoService;

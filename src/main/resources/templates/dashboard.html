@@ -1,243 +1,28 @@
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Offline Mesh Payment Simulator</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            margin: 0; padding: 24px; background: #0d1117; color: #e6edf3;
-        }
-        h1 { margin-top: 0; color: #f0f6fc; }
-        h2 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 4px; margin-top: 32px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .grid { display: grid; gap: 16px; }
-        .grid-2 { grid-template-columns: 1fr 1fr; }
-        .grid-3 { grid-template-columns: repeat(3, 1fr); }
-        .card {
-            background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
-        }
-        .device {
-            border: 1px solid #30363d; border-radius: 6px; padding: 12px; margin-bottom: 8px;
-            background: #0d1117;
-        }
-        .device.bridge { border-color: #2ea043; background: #052e16; }
-        .device.offline { opacity: 0.85; }
-        .badge {
-            display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px;
-            font-weight: 600; margin-left: 8px;
-        }
-        .badge-online { background: #2ea043; color: white; }
-        .badge-offline { background: #6e7681; color: white; }
-        .packet-id {
-            font-family: 'Consolas', 'Monaco', monospace; font-size: 11px;
-            background: #21262d; padding: 2px 6px; border-radius: 3px; margin: 2px;
-            display: inline-block;
-        }
-        button {
-            background: #238636; color: white; border: none; padding: 8px 16px;
-            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;
-            margin: 4px;
-        }
-        button:hover { background: #2ea043; }
-        button.danger { background: #da3633; }
-        button.danger:hover { background: #f85149; }
-        button.secondary { background: #1f6feb; }
-        button.secondary:hover { background: #388bfd; }
-        input, select {
-            background: #0d1117; color: #e6edf3; border: 1px solid #30363d;
-            border-radius: 4px; padding: 6px 10px; font-size: 14px; margin: 4px;
-        }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #30363d; }
-        th { color: #8b949e; font-weight: 600; font-size: 12px; text-transform: uppercase; }
-        .status-SETTLED { color: #56d364; font-weight: 600; }
-        .status-REJECTED { color: #f85149; font-weight: 600; }
-        .status-DUPLICATE_DROPPED { color: #d29922; font-weight: 600; }
-        .status-INVALID { color: #f85149; font-weight: 600; }
-        #log {
-            background: #010409; color: #7ee787; padding: 12px; border-radius: 6px;
-            font-family: 'Consolas', 'Monaco', monospace; font-size: 12px;
-            max-height: 220px; overflow-y: auto; white-space: pre-wrap;
-            border: 1px solid #30363d;
-        }
-        .controls { background: #161b22; padding: 16px; border-radius: 8px;
-                    border: 1px solid #30363d; margin-bottom: 16px; }
-        .step-num {
-            display: inline-block; background: #58a6ff; color: white;
-            border-radius: 50%; width: 24px; height: 24px; text-align: center;
-            line-height: 24px; font-weight: 600; margin-right: 8px;
-        }
-        .balance { font-family: 'Consolas', monospace; color: #56d364; font-weight: 600; }
-        .small { font-size: 12px; color: #8b949e; }
-    </style>
-</head>
-<body>
-<div class="container">
-    <h1>📡 UPI Offline Mesh — Live Demo</h1>
-    <p class="small">
-        Send money in a basement with zero internet. Encrypted packets gossip from phone to phone
-        until one with 4G reaches the backend.
-    </p>
-
-    <div class="controls">
-        <h3 style="margin-top:0">🎬 Demo Flow</h3>
-
-        <div>
-            <span class="step-num">1</span><strong>Compose payment</strong> (simulates sender phone)
-            <br>
-            <select id="senderVpa">
-                <option>alice@demo</option>
-                <option>bob@demo</option>
-                <option>carol@demo</option>
-            </select>
-            →
-            <select id="receiverVpa">
-                <option>bob@demo</option>
-                <option>carol@demo</option>
-                <option>alice@demo</option>
-                <option>dave@demo</option>
-            </select>
-            ₹<input type="number" id="amount" value="500" style="width: 100px">
-            PIN <input type="text" id="pin" value="1234" style="width: 80px" maxlength="4">
-            <button onclick="sendPacket()">📤 Inject into Mesh</button>
-        </div>
-
-        <div style="margin-top: 16px">
-            <span class="step-num">2</span><strong>Gossip</strong> — packets hop device-to-device
-            <button class="secondary" onclick="gossip()">🔄 Run Gossip Round</button>
-        </div>
-
-        <div style="margin-top: 16px">
-            <span class="step-num">3</span><strong>Bridge node walks outside, hits 4G</strong>
-            <button class="secondary" onclick="flushBridges()">📡 Bridges Upload to Backend</button>
-            <span class="small">(parallel — exercises idempotency)</span>
-        </div>
-
-        <div style="margin-top: 16px">
-            <button class="danger" onclick="resetMesh()">🗑 Reset Mesh + Cache</button>
-        </div>
-    </div>
-
-    <div class="grid grid-2">
-        <div class="card">
-            <h2>📱 Mesh Devices</h2>
-            <div id="devices"></div>
-        </div>
-
-        <div class="card">
-            <h2>🏦 Account Balances</h2>
-            <table id="accounts-table">
-                <thead><tr><th>VPA</th><th>Holder</th><th>Balance</th></tr></thead>
-                <tbody></tbody>
-            </table>
-            <p class="small" id="cacheInfo"></p>
-        </div>
-    </div>
-
-    <div class="card" style="margin-top: 16px">
-        <h2>📜 Transaction Ledger</h2>
-        <table id="tx-table">
-            <thead><tr>
-                <th>ID</th><th>From</th><th>To</th><th>Amount</th>
-                <th>Status</th><th>Bridge</th><th>Hops</th><th>Settled</th>
-            </tr></thead>
-            <tbody></tbody>
-        </table>
-    </div>
-
-    <div class="card" style="margin-top: 16px">
-        <h2>🪵 Activity Log</h2>
-        <div id="log"></div>
-    </div>
-</div>
-
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MeshPay | Offline Payment Lab</title><meta name="description" content="Explore encrypted offline payments, mesh routing and deferred settlement. A Spring Boot project by Aman Sharma.">
+<style>
+:root{--bg:#f4f6fa;--ink:#182439;--muted:#64748b;--line:#e2e8f0;--blue:#245ade;--green:#047857}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 system-ui,sans-serif}button,input,select{font:inherit}button,a,input,select{outline-offset:4px}a{color:inherit}header{background:#fff;border-bottom:1px solid var(--line)}.nav{max-width:1280px;margin:auto;padding:20px 32px;display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{font-size:21px;font-weight:800;letter-spacing:-.8px}.brand b{background:var(--blue);color:white;padding:7px 10px;border-radius:10px;margin-right:9px}.nav a{font-size:13px;color:var(--muted);text-decoration:none}.nav a:hover{text-decoration:underline}main{max-width:1280px;margin:auto;padding:42px 32px}.eyebrow{font-size:11px;font-weight:750;letter-spacing:2px;text-transform:uppercase;color:var(--blue)}h1{font-size:38px;line-height:1.2;letter-spacing:-1.5px;margin:10px 0 14px}h2{font-size:17px;letter-spacing:-.3px;margin:0}p{margin:0}.intro{max-width:650px;color:var(--muted);font-size:15px}.demo-note{margin:22px 0;color:#49617d;background:#eaf0fd;border:1px solid #d8e3fa;border-radius:10px;padding:12px 16px;font-size:12px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:24px 0}.stat,.panel{background:white;border:1px solid var(--line);border-radius:14px;box-shadow:0 3px 12px #13233a03}.stat{padding:18px 22px}.stat small{color:var(--muted);display:block;font-size:12px}.stat strong{font-size:27px;letter-spacing:-1px}.workspace{display:grid;grid-template-columns:350px minmax(0,1fr);gap:22px;align-items:start}.panel{padding:24px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:20px}.muted{color:var(--muted);font-size:12px}.tag{font-size:10px;font-weight:700;color:var(--green);background:#ecfdf5;padding:4px 9px;border-radius:30px;white-space:nowrap}.step{display:flex;align-items:center;gap:10px;margin-bottom:16px}.step i{font-style:normal;border-radius:8px;background:#edf2fe;color:var(--blue);padding:3px 10px;font-size:12px;font-weight:800}label{display:block;color:#52627a;font-size:12px;font-weight:650;margin:13px 0 5px}select,input{width:100%;padding:10px 12px;border:1px solid #d5deeb;background:#fcfdff;border-radius:8px;color:var(--ink)}.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}button{cursor:pointer;border:1px solid var(--line);padding:10px 14px;border-radius:8px;background:white;color:var(--ink);font-weight:650;transition:.15s}button:hover{background:#edf2fe;border-color:#b6c9f8}button:disabled{opacity:.5;cursor:wait}.primary{background:var(--blue);color:white;border-color:var(--blue)}.primary:hover{background:#184bc9;color:white}.wide{width:100%;margin-top:16px}.divider{height:1px;background:var(--line);margin:24px 0}.help{color:var(--muted);font-size:12px;margin-top:8px}.actions{display:grid;gap:10px}.reset{color:#9a3840;font-size:12px}.nodes{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;position:relative}.device{text-align:center;padding:17px 8px;border-radius:12px;background:#f7f9fc;border:1px solid var(--line);min-width:0}.device.bridge{background:#effbf6;border-color:#a7e4cb}.device.active{box-shadow:0 0 0 2px #c5d5ff}.icon{font-size:26px;color:var(--blue);margin-bottom:7px}.device strong{display:block;font-size:12px}.device small{font-size:10px;color:var(--muted)}.packet{font-size:10px;background:#e3ebff;color:var(--blue);padding:2px 4px;margin-top:6px;display:block;border-radius:3px;overflow:hidden}.flow-line{margin:16px 0;padding:12px;background:#f8fafc;border:1px dashed #d5deeb;border-radius:8px;font-size:12px;text-align:center;color:var(--muted)}.right{display:grid;gap:22px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:12px}th{text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;padding:10px 8px;background:#f8fafc}td{padding:12px 8px;border-bottom:1px solid #eef2f7}.money{font-variant-numeric:tabular-nums;font-weight:700}.settled{color:var(--green);font-weight:700}.rejected{color:#be123c;font-weight:700}.empty{text-align:center;color:var(--muted);padding:30px;white-space:normal}.ledger{margin-top:22px}.log{max-height:180px;overflow:auto;background:#111e33;color:#b9cbe8;padding:18px;border-radius:9px;font:11px/1.8 ui-monospace,monospace;white-space:pre-wrap}.log-panel{margin-top:22px}.error{color:#be123c;background:#fff1f2;padding:12px;border-radius:8px;margin:12px 0}footer{margin-top:24px;display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:11px}footer a{color:var(--blue)}@media(max-width:1000px){.workspace{grid-template-columns:1fr}.nodes{grid-template-columns:repeat(5,minmax(80px,1fr));overflow:auto}.form-row{grid-template-columns:1fr 1fr}}@media(max-width:600px){main{padding:28px 16px}.nav{padding:16px}h1{font-size:30px}.panel{padding:18px}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:23px}.nodes{grid-template-columns:repeat(2,1fr)}footer{flex-direction:column}}
+</style></head><body>
+<header><div class="nav"><div class="brand"><b>M</b>MeshPay <span class="muted">/ Offline Payment Lab</span></div><a href="https://github.com/Softeraman/offline-mesh-payment-simulator" target="_blank" rel="noreferrer">View source ↗</a></div></header>
+<main><div class="eyebrow">Interactive engineering demo</div><h1>Payments beyond connectivity.</h1><p class="intro">Follow an encrypted payment from an offline phone, across a simulated mesh, to an online bridge and final settlement.</p>
+<div class="demo-note">Sandbox only · Synthetic accounts and balances. No real money or banking connection. Shared temporary demo state resets when the server restarts. Use demo PIN 1234; never enter a real PIN.</div>
+<div role="alert" id="error" hidden class="error"></div>
+<section class="stats" aria-label="Network summary"><div class="stat"><small>Simulated nodes</small><strong id="nodeCount">—</strong></div><div class="stat"><small>Packet copies in mesh</small><strong id="packetCount">—</strong></div><div class="stat"><small>Settled / recent 20</small><strong id="settledCount">—</strong></div></section>
+<div class="workspace"><section class="panel"><div class="step"><i>01</i><h2>Compose a payment</h2></div><form id="paymentForm"><label for="senderVpa">From account</label><select id="senderVpa"><option>alice@demo</option><option>bob@demo</option><option>carol@demo</option></select><label for="receiverVpa">To account</label><select id="receiverVpa"><option>bob@demo</option><option>carol@demo</option><option>alice@demo</option><option>dave@demo</option></select><div class="form-row"><div><label for="amount">Amount (INR)</label><input id="amount" type="number" value="500" min="0.01" max="5000" step="0.01" required></div><div><label for="pin">Demo PIN</label><input id="pin" type="password" value="1234" pattern="[0-9]{4}" maxlength="4" required></div></div><button class="primary wide" type="submit">Encrypt & inject payment →</button></form><p class="help">RSA-OAEP + AES-GCM encryption. SHA-256 integrity checks.</p><div class="divider"></div><div class="step"><i>02</i><h2>Route & settle</h2></div><div class="actions"><button id="gossipBtn">Run gossip round →</button><button id="flushBtn">Upload through bridge →</button></div><p class="help">Gossip copies packets between nodes. Upload submits bridge packets to the settlement service. Upload again to test duplicate handling.</p><div class="divider"></div><button id="resetBtn" class="reset">Clear mesh & duplicate cache</button><p class="help">Balances and transaction history are retained.</p></section>
+<div class="right"><section class="panel"><div class="panel-head"><h2>Mesh network</h2><span class="tag" id="connection">Connecting</span></div><div class="nodes" id="devices"><p class="muted">Starting the network…</p></div><div class="flow-line">Offline sender → Nearby relay nodes → Online bridge → Settlement</div><p class="muted" id="cacheInfo">Waiting for the backend</p></section><section class="panel"><div class="panel-head"><h2>Sandbox accounts</h2><span class="muted">INR · Synthetic balances</span></div><div class="table-wrap"><table id="accounts-table"><thead><tr><th>Account</th><th>Holder</th><th>Balance</th></tr></thead><tbody></tbody></table></div></section></div></div>
+<section class="panel ledger"><div class="panel-head"><h2>Transaction ledger</h2><span class="muted">Latest 20 transactions</span></div><div class="table-wrap"><table id="tx-table"><thead><tr><th>Reference</th><th>From → To</th><th>Amount</th><th>Status</th><th>Bridge</th><th>Hops</th><th>Time</th></tr></thead><tbody><tr><td colspan="7" class="empty">Create a payment, run gossip, then upload through the bridge to see settlement here.</td></tr></tbody></table></div></section>
+<section class="panel log-panel"><div class="panel-head"><h2>Activity timeline</h2><span class="muted">This browser session</span></div><div class="log" id="log" role="log" aria-live="polite">Ready. Start by composing a sandbox payment.</div></section>
+<footer><span>Built by Aman Sharma · Java / Spring Boot / JPA</span><a href="https://github.com/Softeraman">Explore GitHub ↗</a></footer></main>
 <script>
-function log(msg) {
-    const el = document.getElementById('log');
-    el.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n' + el.textContent;
-}
-
-async function refresh() {
-    // Mesh state
-    const m = await fetch('/api/mesh/state').then(r => r.json());
-    const devicesDiv = document.getElementById('devices');
-    devicesDiv.innerHTML = m.devices.map(d => `
-        <div class="device ${d.hasInternet ? 'bridge' : 'offline'}">
-            <strong>${d.deviceId}</strong>
-            <span class="badge ${d.hasInternet ? 'badge-online' : 'badge-offline'}">
-                ${d.hasInternet ? '🌐 4G' : '🚫 OFFLINE'}
-            </span>
-            <span class="small">holding ${d.packetCount} packet(s)</span>
-            <div>${d.packetIds.map(id => `<span class="packet-id">${id}</span>`).join('')}</div>
-        </div>
-    `).join('');
-    document.getElementById('cacheInfo').textContent =
-        `Idempotency cache size: ${m.idempotencyCacheSize}`;
-
-    // Accounts
-    const accs = await fetch('/api/accounts').then(r => r.json());
-    document.querySelector('#accounts-table tbody').innerHTML = accs.map(a => `
-        <tr><td>${a.vpa}</td><td>${a.holderName}</td>
-            <td class="balance">₹${parseFloat(a.balance).toFixed(2)}</td></tr>
-    `).join('');
-
-    // Transactions
-    const txs = await fetch('/api/transactions').then(r => r.json());
-    document.querySelector('#tx-table tbody').innerHTML = txs.map(t => `
-        <tr>
-            <td>${t.id}</td><td>${t.senderVpa}</td><td>${t.receiverVpa}</td>
-            <td class="balance">₹${parseFloat(t.amount).toFixed(2)}</td>
-            <td class="status-${t.status}">${t.status}</td>
-            <td>${t.bridgeNodeId}</td><td>${t.hopCount}</td>
-            <td class="small">${new Date(t.settledAt).toLocaleTimeString()}</td>
-        </tr>
-    `).join('');
-}
-
-async function sendPacket() {
-    const body = {
-        senderVpa: document.getElementById('senderVpa').value,
-        receiverVpa: document.getElementById('receiverVpa').value,
-        amount: parseFloat(document.getElementById('amount').value),
-        pin: document.getElementById('pin').value,
-        ttl: 5,
-        startDevice: 'phone-alice'
-    };
-    const r = await fetch('/api/demo/send', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body)
-    }).then(r => r.json());
-    log(`📤 Packet ${r.packetId.substring(0,8)} encrypted & injected at ${r.injectedAt} (TTL ${r.ttl})`);
-    log(`   ciphertext (truncated): ${r.ciphertextPreview}`);
-    refresh();
-}
-
-async function gossip() {
-    const r = await fetch('/api/mesh/gossip', {method: 'POST'}).then(r => r.json());
-    log(`🔄 Gossip: ${r.transfers} transfer(s) — ${JSON.stringify(r.deviceCounts)}`);
-    refresh();
-}
-
-async function flushBridges() {
-    const r = await fetch('/api/mesh/flush', {method: 'POST'}).then(r => r.json());
-    log(`📡 ${r.uploadsAttempted} bridge upload(s):`);
-    r.results.forEach(res => {
-        log(`   ${res.bridgeNode} packet ${res.packetId} → ${res.outcome}` +
-            (res.reason ? ` (${res.reason})` : ''));
-    });
-    refresh();
-}
-
-async function resetMesh() {
-    await fetch('/api/mesh/reset', {method: 'POST'});
-    log('🗑 mesh + idempotency cache cleared');
-    refresh();
-}
-
-refresh();
-setInterval(refresh, 3000);
-</script>
-</body>
-</html>
+const $=id=>document.getElementById(id);const money=v=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(v);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let busy=false;
+function log(msg){$('log').textContent='['+new Date().toLocaleTimeString()+'] '+msg+'\n'+$('log').textContent.slice(0,12000)}
+async function api(path,body){const r=await fetch('/api/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw Error('Request failed ('+r.status+'). Please check your inputs and retry.');return r.json()}
+async function refresh(){const [m,accs,txs]=await Promise.all([api('mesh/state'),api('accounts'),api('transactions')]);$('connection').textContent='Backend connected';$('nodeCount').textContent=m.devices.length;$('packetCount').textContent=m.devices.reduce((s,d)=>s+d.packetCount,0);$('settledCount').textContent=txs.filter(t=>t.status==='SETTLED').length;
+$('devices').innerHTML=m.devices.sort((a,b)=>a.deviceId.localeCompare(b.deviceId)).map(d=>`<div class="device ${d.hasInternet?'bridge':''} ${d.packetCount?'active':''}"><div class="icon">${d.hasInternet?'◉':'▣'}</div><strong>${esc(d.deviceId.replace('phone-',''))}</strong><small>${d.hasInternet?'Online bridge':'Offline node'}</small><div class="muted">${d.packetCount} packet(s)</div>${d.packetIds.map(id=>`<span class="packet">${esc(id)}</span>`).join('')}</div>`).join('');$('cacheInfo').textContent=`Duplicate protection: ${m.idempotencyCacheSize} packet hash(es) remembered`;
+document.querySelector('#accounts-table tbody').innerHTML=accs.map(a=>`<tr><td>${esc(a.vpa)}</td><td>${esc(a.holderName)}</td><td class="money">${money(a.balance)}</td></tr>`).join('');document.querySelector('#tx-table tbody').innerHTML=txs.length?txs.map(t=>`<tr><td>#${esc(t.id)}</td><td>${esc(t.senderVpa)} → ${esc(t.receiverVpa)}</td><td class="money">${money(t.amount)}</td><td class="${t.status==='SETTLED'?'settled':'rejected'}">${esc(t.status)}</td><td>${esc(t.bridgeNodeId)}</td><td>${esc(t.hopCount)}</td><td>${t.settledAt?new Date(t.settledAt).toLocaleTimeString():'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">No settlements yet. Compose a payment → Run gossip → Upload through bridge.</td></tr>'}
+async function run(fn){if(busy)return;busy=true;$('error').hidden=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();await refresh()}catch(e){$('error').textContent=e.message;$('error').hidden=false;log(e.message)}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+$('paymentForm').onsubmit=e=>{e.preventDefault();run(async()=>{if($('senderVpa').value===$('receiverVpa').value)throw Error('Choose different sender and receiver accounts.');const r=await api('demo/send',{senderVpa:$('senderVpa').value,receiverVpa:$('receiverVpa').value,amount:Number($('amount').value),pin:$('pin').value,ttl:5,startDevice:'phone-alice'});log('Encrypted packet '+r.packetId.substring(0,8)+' injected at '+r.injectedAt+'. TTL '+r.ttl)})};
+$('gossipBtn').onclick=()=>run(async()=>{const r=await api('mesh/gossip',{});log('Gossip complete: '+r.transfers+' packet transfers.')});$('flushBtn').onclick=()=>run(async()=>{const r=await api('mesh/flush',{});log(r.uploadsAttempted+' bridge upload(s) attempted.');r.results.forEach(v=>log(v.packetId+' → '+v.outcome+(v.reason?' ('+v.reason+')':'')))});$('resetBtn').onclick=()=>run(async()=>{await api('mesh/reset',{});log('Mesh and duplicate cache cleared. Account balances retained.')});
+refresh().catch(()=>{$('connection').textContent='Starting / unavailable';$('error').textContent='Backend is starting. Please retry in a moment.';$('error').hidden=false});setInterval(()=>{if(!busy)refresh().then(()=>{$('error').hidden=true}).catch(()=>{$('connection').textContent='Reconnecting…'})},5000);
+</script></body></html>
