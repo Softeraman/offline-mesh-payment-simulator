@@ -1,6 +1,6 @@
 # Vercel portfolio demo
 
-The responsive dashboard uses the original Java 17 Spring Boot encryption, mesh, duplicate detection and settlement services. Production tracks `codex/vercel-live-demo`; main is preserved for review in the pull request.
+The responsive dashboard uses the original Java 17 Spring Boot encryption, mesh, duplicate detection and settlement services. Production tracks `main`; the reviewed deployment changes have been merged into main.
 
 Vercel runs `Dockerfile.vercel` through the explicitly declared container service in `vercel.json`. No database credentials are required. The image runs tests during its build and listens on `PORT` (default 80).
 
